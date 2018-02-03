@@ -29,8 +29,11 @@ import tensorflow as tf
 IMG_WIDTH = 128
 IMG_HEIGHT = 128
 IMG_CHANNELS = 3
-TRAIN_PATH = '../input/stage1_train/'
-TEST_PATH = '../input/stage1_test/'
+
+#os.chdir("C:/Users/577100/Documents/GitHub/SkylineNuclei/")
+
+TRAIN_PATH = 'data/stage1_train/'
+TEST_PATH = 'data/stage1_test/'
 
 warnings.filterwarnings('ignore', category=UserWarning, module='skimage')
 seed = 42
