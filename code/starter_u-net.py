@@ -2,6 +2,7 @@ import os
 import sys
 import random
 import warnings
+import pickle
 
 import numpy as np
 import pandas as pd
@@ -13,6 +14,7 @@ from itertools import chain
 from skimage.io import imread, imshow, imread_collection, concatenate_images
 from skimage.transform import resize
 from skimage.morphology import label
+from skimage.color import rgb2gray
 
 from keras.models import Model, load_model
 from keras.layers import Input
@@ -25,12 +27,15 @@ from keras import backend as K
 
 import tensorflow as tf
 
+
+
+
 # Set some parameters
 IMG_WIDTH = 128
 IMG_HEIGHT = 128
 IMG_CHANNELS = 3
 
-#os.chdir("C:/Users/577100/Documents/GitHub/SkylineNuclei/")
+os.chdir("C:/Users/577100/Documents/GitHub/SkylineNuclei/")
 
 TRAIN_PATH = 'data/stage1_train/'
 TEST_PATH = 'data/stage1_test/'
@@ -62,6 +67,34 @@ for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
                                       preserve_range=True), axis=-1)
         mask = np.maximum(mask, mask_)
     Y_train[n] = mask
+
+
+#save as pickle
+pickle.dump( X_train, open( "data/X_train.p", "wb" ) )
+pickle.dump( Y_train, open( "data/Y_train.p", "wb" ) )
+
+#Data augmentation
+def permute_cols(img1, img2, n):
+    
+    n = float(n)
+    
+    p = np.random.permutation(np.array(range(0,int(128/n))))
+    
+    new_indx = np.array([x*n+np.array(range(0,int(n))) for x in p]).flatten().astype(int)
+    
+    return img1[:,new_indx,:], img2[:, new_indx, :]
+
+X_train_p, Y_train_p = 
+[permute_cols(X_train[i], Y_train[i], 4) for i in range(0, X_train.shape[0])]
+
+
+
+
+
+
+
+
+
 
 # Get and resize test images
 X_test = np.zeros((len(test_ids), IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
@@ -98,58 +131,60 @@ def mean_iou(y_true, y_pred):
 
 
 # Build U-Net model
-inputs = Input((IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS))
-s = Lambda(lambda x: x / 255) (inputs)
-
-c1 = Conv2D(16, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (s)
-c1 = Dropout(0.1) (c1)
-c1 = Conv2D(16, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (c1)
-p1 = MaxPooling2D((2, 2)) (c1)
-
-c2 = Conv2D(32, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (p1)
-c2 = Dropout(0.1) (c2)
-c2 = Conv2D(32, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (c2)
-p2 = MaxPooling2D((2, 2)) (c2)
-
-c3 = Conv2D(64, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (p2)
-c3 = Dropout(0.2) (c3)
-c3 = Conv2D(64, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (c3)
-p3 = MaxPooling2D((2, 2)) (c3)
-
-c4 = Conv2D(128, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (p3)
-c4 = Dropout(0.2) (c4)
-c4 = Conv2D(128, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (c4)
-p4 = MaxPooling2D(pool_size=(2, 2)) (c4)
-
-c5 = Conv2D(256, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (p4)
-c5 = Dropout(0.3) (c5)
-c5 = Conv2D(256, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (c5)
-
-u6 = Conv2DTranspose(128, (2, 2), strides=(2, 2), padding='same') (c5)
-u6 = concatenate([u6, c4])
-c6 = Conv2D(128, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (u6)
-c6 = Dropout(0.2) (c6)
-c6 = Conv2D(128, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (c6)
-
-u7 = Conv2DTranspose(64, (2, 2), strides=(2, 2), padding='same') (c6)
-u7 = concatenate([u7, c3])
-c7 = Conv2D(64, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (u7)
-c7 = Dropout(0.2) (c7)
-c7 = Conv2D(64, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (c7)
-
-u8 = Conv2DTranspose(32, (2, 2), strides=(2, 2), padding='same') (c7)
-u8 = concatenate([u8, c2])
-c8 = Conv2D(32, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (u8)
-c8 = Dropout(0.1) (c8)
-c8 = Conv2D(32, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (c8)
-
-u9 = Conv2DTranspose(16, (2, 2), strides=(2, 2), padding='same') (c8)
-u9 = concatenate([u9, c1], axis=3)
-c9 = Conv2D(16, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (u9)
-c9 = Dropout(0.1) (c9)
-c9 = Conv2D(16, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (c9)
-
-outputs = Conv2D(1, (1, 1), activation='sigmoid') (c9)
+def create_unet():
+    inputs = Input((IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS))
+    s = Lambda(lambda x: x / 255) (inputs)
+    
+    c1 = Conv2D(16, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (s)
+    c1 = Dropout(0.1) (c1)
+    c1 = Conv2D(16, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (c1)
+    p1 = MaxPooling2D((2, 2)) (c1)
+    
+    c2 = Conv2D(32, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (p1)
+    c2 = Dropout(0.1) (c2)
+    c2 = Conv2D(32, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (c2)
+    p2 = MaxPooling2D((2, 2)) (c2)
+    
+    c3 = Conv2D(64, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (p2)
+    c3 = Dropout(0.2) (c3)
+    c3 = Conv2D(64, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (c3)
+    p3 = MaxPooling2D((2, 2)) (c3)
+    
+    c4 = Conv2D(128, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (p3)
+    c4 = Dropout(0.2) (c4)
+    c4 = Conv2D(128, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (c4)
+    p4 = MaxPooling2D(pool_size=(2, 2)) (c4)
+    
+    c5 = Conv2D(256, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (p4)
+    c5 = Dropout(0.3) (c5)
+    c5 = Conv2D(256, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (c5)
+    
+    u6 = Conv2DTranspose(128, (2, 2), strides=(2, 2), padding='same') (c5)
+    u6 = concatenate([u6, c4])
+    c6 = Conv2D(128, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (u6)
+    c6 = Dropout(0.2) (c6)
+    c6 = Conv2D(128, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (c6)
+    
+    u7 = Conv2DTranspose(64, (2, 2), strides=(2, 2), padding='same') (c6)
+    u7 = concatenate([u7, c3])
+    c7 = Conv2D(64, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (u7)
+    c7 = Dropout(0.2) (c7)
+    c7 = Conv2D(64, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (c7)
+    
+    u8 = Conv2DTranspose(32, (2, 2), strides=(2, 2), padding='same') (c7)
+    u8 = concatenate([u8, c2])
+    c8 = Conv2D(32, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (u8)
+    c8 = Dropout(0.1) (c8)
+    c8 = Conv2D(32, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (c8)
+    
+    u9 = Conv2DTranspose(16, (2, 2), strides=(2, 2), padding='same') (c8)
+    u9 = concatenate([u9, c1], axis=3)
+    c9 = Conv2D(16, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (u9)
+    c9 = Dropout(0.1) (c9)
+    c9 = Conv2D(16, (3, 3), activation='elu', kernel_initializer='he_normal', padding='same') (c9)
+    
+    outputs = Conv2D(1, (1, 1), activation='sigmoid') (c9)
+    return Model(inputs=[inputs], outputs=[outputs])
 
 model = Model(inputs=[inputs], outputs=[outputs])
 model.compile(optimizer='adam', loss='binary_crossentropy', metrics=[mean_iou])
@@ -157,10 +192,14 @@ model.summary()
 
 # Fit model
 earlystopper = EarlyStopping(patience=5, verbose=1)
-checkpointer = ModelCheckpoint('model-dsbowl2018-1.h5', verbose=1, save_best_only=True)
+checkpointer = ModelCheckpoint('models/model-dsbowl2018-1.h5', verbose=1, save_best_only=True)
 results = model.fit(X_train, Y_train, validation_split=0.1, batch_size=16, epochs=50, 
                     callbacks=[earlystopper, checkpointer])
 
+#load an old model
+def load_trained_model(weights_path):
+   model = create_unet()
+   model.load_weights(weights_path)
 
 # Perform a sanity check on some random training samples
 ix = random.randint(0, len(preds_train_t))
@@ -210,4 +249,4 @@ for n, id_ in enumerate(test_ids):
 sub = pd.DataFrame()
 sub['ImageId'] = new_test_ids
 sub['EncodedPixels'] = pd.Series(rles).apply(lambda x: ' '.join(str(y) for y in x))
-sub.to_csv('sub-dsbowl2018-1.csv', index=False)
+sub.to_csv('submissions/sub-dsbowl2018-1.csv', index=False)
