@@ -72,7 +72,8 @@ for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
 #save as pickle
 pickle.dump( X_train, open( "data/X_train.p", "wb" ) )
 pickle.dump( Y_train, open( "data/Y_train.p", "wb" ) )
-
+X_train = pickle.load( open( "data/X_train.p", "rb" ) )
+Y_train = pickle.load( open( "data/Y_train.p", "rb" ) )
 #Data augmentation
 def permute_cols(img1, img2, n):
     
@@ -84,15 +85,16 @@ def permute_cols(img1, img2, n):
     
     return img1[:,new_indx,:], img2[:, new_indx, :]
 
-X_train_p, Y_train_p = 
-[permute_cols(X_train[i], Y_train[i], 4) for i in range(0, X_train.shape[0])]
+X_train_p = X_train.copy()
+Y_train_p  = Y_train.copy()
+for i in range(0, X_train.shape[0]):
+    
+    permuted = permute_cols(X_train[i], Y_train[i], 4)
+    X_train_p[i] = permuted[0]
+    Y_train_p[i] = permuted[1]
 
-
-
-
-
-
-
+    
+X_train_new = np.concatenate((X_train_p,X_train))
 
 
 
@@ -186,6 +188,7 @@ def create_unet():
     outputs = Conv2D(1, (1, 1), activation='sigmoid') (c9)
     return Model(inputs=[inputs], outputs=[outputs])
 
+model = create_unet()
 model = Model(inputs=[inputs], outputs=[outputs])
 model.compile(optimizer='adam', loss='binary_crossentropy', metrics=[mean_iou])
 model.summary()
@@ -200,6 +203,26 @@ results = model.fit(X_train, Y_train, validation_split=0.1, batch_size=16, epoch
 def load_trained_model(weights_path):
    model = create_unet()
    model.load_weights(weights_path)
+
+# Predict on train, val and test
+model = load_model('models/base_epoc15_loss0.077iou0.769.h5', custom_objects={'mean_iou': mean_iou})
+preds_train = model.predict(X_train[:int(X_train.shape[0]*0.9)], verbose=1)
+preds_val = model.predict(X_train[int(X_train.shape[0]*0.9):], verbose=1)
+preds_test = model.predict(X_test, verbose=1)
+
+# Threshold predictions
+preds_train_t = (preds_train > 0.5).astype(np.uint8)
+preds_val_t = (preds_val > 0.5).astype(np.uint8)
+preds_test_t = (preds_test > 0.5).astype(np.uint8)
+
+# Create list of upsampled test masks
+preds_test_upsampled = []
+for i in range(len(preds_test)):
+    preds_test_upsampled.append(resize(np.squeeze(preds_test[i]), 
+                                       (sizes_test[i][0], sizes_test[i][1]), 
+                                       mode='constant', preserve_range=True))
+
+
 
 # Perform a sanity check on some random training samples
 ix = random.randint(0, len(preds_train_t))
@@ -249,4 +272,4 @@ for n, id_ in enumerate(test_ids):
 sub = pd.DataFrame()
 sub['ImageId'] = new_test_ids
 sub['EncodedPixels'] = pd.Series(rles).apply(lambda x: ' '.join(str(y) for y in x))
-sub.to_csv('submissions/sub-dsbowl2018-1.csv', index=False)
+sub.to_csv('submissions/base_unet.csv', index=False)
